@@ -107,26 +107,7 @@ if __name__ == "__main__":
     flow.run(
         parameters=dict(
             tables=[
-                ## 1st pass
-                # 'activities',
-                'activity_excerpts',
-                ## 2nd pass < 100 MB
-                # 'excerpts', 'grades', 'public_schools', 'questions', 'subjects', 'texts',
-                # 'schools', 'lesson_events',
-                ## 3rd pass < ~1 GB
-                # 'roster_grades', 'roster_subjects', 'faculty_memberships',
-                # 'notes',
-                ## 4th pass < ~5 GB
-                # 'annotation_notes', 'lesson_activities', 'lessons', 'student_response_events',
-                ## 5th pass > 50 GB
-                # 'student_answers',
-                # 'student_lessons',
-                # 'student_responses',
-                #
-                # bad indexes
-                # 'annotations',
-                # no access
-                # 'rosters',
+                'activities',
             ],
             starting_index=100,
             ending_index=200,
