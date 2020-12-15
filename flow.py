@@ -64,39 +64,39 @@ with Flow(
         num_of_records_in_batch=unmapped(number_of_records_in_batch),
         destination_directory=unmapped(destination_directory)
     )
-    # parquet_files_to_upload = tasks.flatten_nested_list(
-    #     nested_list=prepared_parquet_files
-    # )
-    # transient_downloads = tasks.purge_transient_files.map(
-    #     filename_list=raw_table_data
-    # )
-    # transient_downloads.set_upstream(prepared_parquet_files)
-    #
-    # files_to_purge = tasks.identify_s3_files_to_purge.map(
-    #     table_name=tables,
-    #     first_index=unmapped(starting_index),
-    #     secrets=unmapped(prefect_secrets)
-    # )
-    # flat_files_to_purge = tasks.flatten_nested_list(
-    #     nested_list=files_to_purge
-    # )
-    # cleaned_s3_bucket = tasks.purge_s3_files.map(
-    #     filename=flat_files_to_purge,
-    #     secrets=unmapped(prefect_secrets)
-    # )
-    # files_uploaded = tasks.sync_with_s3.map(
-    #     data=parquet_files_to_upload,
-    #     secrets=unmapped(prefect_secrets)
-    # )
-    # files_uploaded.set_upstream(cleaned_s3_bucket)
-    #
-    # folder_table_data = tasks.group_data_partitions_by_table_name(
-    #     data=parquet_files_to_upload
-    # )
-    # finished = tasks.purge_transient_folders.map(
-    #     filename_list=folder_table_data
-    # )
-    # finished.set_upstream(files_uploaded)
+    parquet_files_to_upload = tasks.flatten_nested_list(
+        nested_list=prepared_parquet_files
+    )
+    transient_downloads = tasks.purge_transient_files.map(
+        filename_list=raw_table_data
+    )
+    transient_downloads.set_upstream(prepared_parquet_files)
+
+    files_to_purge = tasks.identify_s3_files_to_purge.map(
+        table_name=tables,
+        first_index=unmapped(starting_index),
+        secrets=unmapped(prefect_secrets)
+    )
+    flat_files_to_purge = tasks.flatten_nested_list(
+        nested_list=files_to_purge
+    )
+    cleaned_s3_bucket = tasks.purge_s3_files.map(
+        filename=flat_files_to_purge,
+        secrets=unmapped(prefect_secrets)
+    )
+    files_uploaded = tasks.sync_with_s3.map(
+        data=parquet_files_to_upload,
+        secrets=unmapped(prefect_secrets)
+    )
+    files_uploaded.set_upstream(cleaned_s3_bucket)
+
+    folder_table_data = tasks.group_data_partitions_by_table_name(
+        data=parquet_files_to_upload
+    )
+    finished = tasks.purge_transient_folders.map(
+        filename_list=folder_table_data
+    )
+    finished.set_upstream(files_uploaded)
 
 
 if __name__ == "__main__":
@@ -110,11 +110,11 @@ if __name__ == "__main__":
             tables=[
                 'activities',
             ],
-            starting_index=100,
-            total_records_to_move=200,
+            starting_index=0,
+            total_records_to_move=0,
             indexed_field='id',
             number_of_records_in_batch=100000,
-            destination_directory='./test'
+            # destination_directory='./test'
         ),
         executor=LocalDaskExecutor(
             scheduler="threads"
