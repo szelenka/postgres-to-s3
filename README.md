@@ -3,6 +3,10 @@
 This is a Prefect Flow designed to iteratively pull data from a Postgres server running on AWS RDS service,
 and push the data to S3 as partitioned parquet files.
 
+## DAG
+
+![DAG](dag.png)
+
 ## Connection details
 
 The connection details for both Postgres and s3 are stored in a Prefect Secret in the following format:
