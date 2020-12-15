@@ -65,7 +65,8 @@ WHERE
     AND table_name = %(table_name)s
 ORDER BY ordinal_position ASC"""
     get_logger().debug(stmt)
-    dt = pd.read_sql(sql=stmt, con=get_rds_engine(secrets=secrets), params=dict(
+    con = get_rds_engine(secrets=secrets)
+    dt = pd.read_sql(sql=stmt, con=con, params=dict(
         database=secrets['database_name'],
         schema=secrets['database_schema'],
         table_name=table
@@ -93,6 +94,7 @@ ORDER BY ordinal_position ASC"""
         else:
             raise RuntimeError(f'Unknown data_type: {row.data_type}')
 
+    con.dispose()
     return mapper
 
 
@@ -116,7 +118,8 @@ WHERE relname=%(table_name)s
 ORDER BY reltuples DESC
 LIMIT 1"""
     get_logger().debug(stmt)
-    df = pd.read_sql(sql=stmt, con=get_rds_engine(secrets=secrets), params=dict(table_name=table_name))
+    con = get_rds_engine(secrets=secrets)
+    df = pd.read_sql(sql=stmt, con=con, params=dict(table_name=table_name))
     row_estimate = df.iloc[0]['estimate'] + num_of_records_in_batch
     get_logger().info(f"Row estimate for table_name: {table_name} {row_estimate}")
     rows_to_pull = last_index if 0 < last_index < row_estimate else row_estimate
@@ -136,13 +139,14 @@ LIMIT 1"""
     ]
 
     get_logger().info(f"Created {len(table_partitions)} partitions from table_name: {table_name}")
-
+    con.dispose()
     return table_partitions
 
 
 @task()
 def flatten_nested_list(
-        nested_list: List[List[Union[table_batch, table_data]]]
+        nested_list: List[List[Union[table_batch, table_data]]],
+        max_concurrent_connections: int = 0
 ) -> List[Union[table_batch, table_data]]:
     results = [item for sublist in nested_list for item in sublist]
     get_logger().info(f"Discovered: {len(results)} total records from nested_list: {len(nested_list)}")
@@ -164,7 +168,8 @@ ORDER BY "{index}" ASC
 OFFSET %(offset)s
 LIMIT %(limit)s"""
     get_logger().debug(stmt)
-    df = pd.read_sql(sql=stmt, con=get_rds_engine(secrets=secrets), params=dict(
+    con = get_rds_engine(secrets=secrets)
+    df = pd.read_sql(sql=stmt, con=con, params=dict(
         offset=partition.offset,
         limit=partition.limit
     ))
@@ -198,6 +203,7 @@ LIMIT %(limit)s"""
         index=False
     )
 
+    con.dispose()
     return table_data(partition.table_name, filename)
 
 

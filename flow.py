@@ -39,6 +39,7 @@ with Flow(
     starting_index = Parameter('starting_index', default=0, required=True)
     total_records_to_move = Parameter('total_records_to_move', default=0, required=True)
     number_of_records_in_batch = Parameter('number_of_records_in_batch', default=100000, required=False)
+    max_concurrent_connections = Parameter('max_concurrent_connections', default=50)
 
     partitions = tasks.create_data_partitions.map(
         table_name=tables,
@@ -48,7 +49,8 @@ with Flow(
         num_of_records_in_batch=unmapped(number_of_records_in_batch)
     )
     flat_partitions = tasks.flatten_nested_list(
-        nested_list=partitions
+        nested_list=partitions,
+        max_concurrent_connections=max_concurrent_connections
     )
     original_data = tasks.get_data_from_sql.map(
         partition=flat_partitions,
@@ -109,9 +111,10 @@ if __name__ == "__main__":
         parameters=dict(
             tables=[
                 'activities',
+
             ],
             starting_index=0,
-            total_records_to_move=0,
+            total_records_to_move=100,
             indexed_field='id',
             number_of_records_in_batch=100000,
             # destination_directory='./test'
