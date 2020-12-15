@@ -1,6 +1,7 @@
 from typing import List, Dict, Any, Union
 from pathlib import Path
 import os
+import datetime
 from collections import namedtuple, defaultdict
 from tempfile import NamedTemporaryFile, mkdtemp
 from shutil import rmtree
@@ -67,7 +68,7 @@ ORDER BY ordinal_position ASC"""
     dt = pd.read_sql(sql=stmt, con=get_rds_engine(secrets=secrets), params=dict(
         database=secrets['database_name'],
         schema=secrets['database_schema'],
-        table=table
+        table_name=table
     ))
     dt['is_nullable'] = dt['is_nullable'].apply(lambda _: _ == 'YES')
     get_logger().info(f"Discovered {len(dt)} columns for table_name: {table}")
@@ -95,7 +96,10 @@ ORDER BY ordinal_position ASC"""
     return mapper
 
 
-@task
+@task(
+    max_retries=3,
+    retry_delay=datetime.timedelta(seconds=30)
+)
 def create_data_partitions(
         table_name: str,
         first_index: int,
@@ -112,7 +116,7 @@ WHERE relname=%(table_name)s
 ORDER BY reltuples DESC
 LIMIT 1"""
     get_logger().debug(stmt)
-    df = pd.read_sql(sql=stmt, con=get_rds_engine(secrets=secrets), params=dict(table=table_name))
+    df = pd.read_sql(sql=stmt, con=get_rds_engine(secrets=secrets), params=dict(table_name=table_name))
     row_estimate = df.iloc[0]['estimate'] + num_of_records_in_batch
     get_logger().info(f"Row estimate for table_name: {table_name} {row_estimate}")
     rows_to_pull = last_index if 0 < last_index < row_estimate else row_estimate
@@ -136,7 +140,7 @@ LIMIT 1"""
     return table_partitions
 
 
-@task
+@task()
 def flatten_nested_list(
         nested_list: List[List[Union[table_batch, table_data]]]
 ) -> List[Union[table_batch, table_data]]:
@@ -145,7 +149,10 @@ def flatten_nested_list(
     return results
 
 
-@task
+@task(
+    max_retries=3,
+    retry_delay=datetime.timedelta(seconds=30)
+)
 def get_data_from_sql(
         partition: table_batch,
         index: str,
@@ -194,7 +201,7 @@ LIMIT %(limit)s"""
     return table_data(partition.table_name, filename)
 
 
-@task
+@task()
 def group_data_partitions_by_table_name(
         data: List[table_data]
 ) -> List[List[table_data]]:
@@ -244,50 +251,50 @@ def pandas_to_local_parquet(
         assert p in df.columns, f'Missing column "{p}", cannot continue with S3 upload'
 
     get_logger().info(f"[{idx}] Attempting to prepare {len(df)} records, {data.filename.stat().st_size/(1024*1024)} MB from file: {data.filename}")
-    df.to_parquet(
-        # path=f"s3://{path}",
-        path=directory,
-        engine='pyarrow',
-        partition_cols=partition_cols,
-        index=False,
-        allow_truncated_timestamps=True,
-        # flavor='spark',
-        # filesystem=s3
-    )
+    # df.to_parquet(
+    #     # path=f"s3://{path}",
+    #     path=directory,
+    #     engine='pyarrow',
+    #     partition_cols=partition_cols,
+    #     index=False,
+    #     allow_truncated_timestamps=True,
+    #     # flavor='spark',
+    #     # filesystem=s3
+    # )
 
     # use Dask to write the _metadata and _common_metadata files
     # write to local disk first, then use aws cli to sync the filename to s3
     # TODO: ref https://github.com/dask/dask/issues/6867
-    # dd.from_pandas(
-    #     data=df,
-    #     chunksize=num_of_records_in_batch
-    # ).to_parquet(
-    #     # path=f"s3://{path}",
-    #     path=directory,
-    #     append=append,
-    #     engine='pyarrow',
-    #     partition_on=partition_cols,
-    #     ignore_divisions=True,
-    #     # storage_options=dict(
-    #     #     anon=False,
-    #     #     key=secrets['s3_access_key'],
-    #     #     secret=secrets['s3_secret_key'],
-    #     #     use_ssl=True,
-    #     #     client_kwargs=dict(
-    #     #         endpoint_url=secrets['s3_server'],
-    #     #     )
-    #     # ),
-    #     write_index=False
-    # )
-    # return len(df)
+    dd.from_pandas(
+        data=df,
+        chunksize=num_of_records_in_batch
+    ).to_parquet(
+        # path=f"s3://{path}",
+        path=directory,
+        append=append,
+        engine='pyarrow',
+        partition_on=partition_cols,
+        ignore_divisions=True,
+        # storage_options=dict(
+        #     anon=False,
+        #     key=secrets['s3_access_key'],
+        #     secret=secrets['s3_secret_key'],
+        #     use_ssl=True,
+        #     client_kwargs=dict(
+        #         endpoint_url=secrets['s3_server'],
+        #     )
+        # ),
+        write_index=False
+    )
+    return len(df)
 
 
-@task
+@task()
 def prepare_table_data_for_parquet_directory(
         grouped_table_data: List[table_data],
         first_index: int,
         num_of_records_in_batch: int,
-        secrets: Dict[str, str]
+        destination_directory: str = None
 ) -> Union[List[table_data], None]:
     total_records = 0
     if len(grouped_table_data) == 0:
@@ -296,7 +303,7 @@ def prepare_table_data_for_parquet_directory(
 
     table_name = grouped_table_data[-1].table_name
     total_partitions = len(grouped_table_data)
-    directory = Path(mkdtemp(suffix=f"_{table_name}"))
+    directory = Path(destination_directory or mkdtemp(suffix=f"_{table_name}"))
 
     # if this is an incremental load, we should download the _metadata files from s3 locally
     # such that the appends will update that correctly
@@ -375,7 +382,7 @@ def purge_transient_folders(filename_list: List[List[table_data]]) -> bool:
     return True
 
 
-@task
+@task()
 def identify_s3_files_to_purge(
         table_name: str,
         first_index: int,
@@ -394,7 +401,7 @@ def identify_s3_files_to_purge(
     return results
 
 
-@task
+@task()
 def purge_s3_files(
     filename: str,
     secrets: Dict[str, str]
@@ -404,7 +411,7 @@ def purge_s3_files(
     return True
 
 
-@task
+@task()
 def sync_with_s3(
         data: table_data,
         secrets: Dict[str, str]
