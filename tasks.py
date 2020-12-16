@@ -184,7 +184,19 @@ LIMIT %(limit)s"""
     # this is especially important for columns which allow NULL in Postgres, and NaN in Pandas
     for c in df.columns:
         assert c in partition.data_types, f"Missing data_type for query: {c}"
-        df[c] = df[c].astype(partition.data_types[c])
+        # Since pandas represents timestamps in nanosecond resolution
+        # the timespan that can be represented using a 64-bit integer is limited to approximately 584 years
+        # ref: http://pandas-docs.github.io/pandas-docs-travis/user_guide/timeseries.html#timeseries-timestamp-limits
+        if partition.data_types[c] in ['datetime64[ms]'] and df[c].min:
+            # if it's outside min/max, set to NaT
+            df[c] = pd.to_datetime(
+                arg=df[c],
+                errors='coerce',
+                unit='ms',
+                origin='unix',
+            )
+        else:
+            df[c] = df[c].astype(partition.data_types[c])
 
     # create the placeholders for partitioning the parquet file later on
     assert 'created_at' in df.columns, f'Missing column "created_at" in table_name: {partition.table_name}'
