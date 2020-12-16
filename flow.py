@@ -111,7 +111,6 @@ if __name__ == "__main__":
         parameters=dict(
             tables=[
                 'activities',
-
             ],
             starting_index=0,
             total_records_to_move=100,

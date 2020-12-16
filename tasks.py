@@ -200,6 +200,8 @@ LIMIT %(limit)s"""
     filename = Path(ntf.name)
     df.to_parquet(
         path=filename,
+        engine='pyarrow',
+        compression='snappy',
         index=False
     )
 
@@ -261,6 +263,7 @@ def pandas_to_local_parquet(
     #     # path=f"s3://{path}",
     #     path=directory,
     #     engine='pyarrow',
+    #     compression='snappy',
     #     partition_cols=partition_cols,
     #     index=False,
     #     allow_truncated_timestamps=True,
@@ -279,6 +282,7 @@ def pandas_to_local_parquet(
         path=directory,
         append=append,
         engine='pyarrow',
+        compression='snappy',
         partition_on=partition_cols,
         ignore_divisions=True,
         # storage_options=dict(
